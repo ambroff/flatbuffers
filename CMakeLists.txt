@@ -1,6 +1,6 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.0)
 
-project(FlatBuffers)
+project(FlatBuffers VERSION 1.9.0)
 
 # NOTE: Code coverage only works on Linux & OSX.
 option(FLATBUFFERS_CODE_COVERAGE "Enable the code coverage build option." OFF)
@@ -246,89 +246,10 @@ endif()
 
 if(FLATBUFFERS_BUILD_GRPCTEST)
   if(CMAKE_COMPILER_IS_GNUCXX)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-parameter -Wno-shadow")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
   endif()
   add_executable(grpctest ${FlatBuffers_GRPCTest_SRCS})
-  target_link_libraries(grpctest grpc++_unsecure grpc_unsecure gpr pthread dl)
-endif()
-
-include(CMake/Version.cmake)
-
-if(FLATBUFFERS_INSTALL)
-  include(GNUInstallDirs)
-
-  install(DIRECTORY include/flatbuffers DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-
-  set(FB_CMAKE_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/flatbuffers")
-
-  configure_file(CMake/FlatbuffersConfigVersion.cmake.in FlatbuffersConfigVersion.cmake @ONLY)
-  install(
-      FILES "CMake/FlatbuffersConfig.cmake" "${CMAKE_CURRENT_BINARY_DIR}/FlatbuffersConfigVersion.cmake"
-      DESTINATION ${FB_CMAKE_DIR}
-  )
-
-  if(FLATBUFFERS_BUILD_FLATLIB)
-    if(CMAKE_VERSION VERSION_LESS 3.0)
-      install(
-        TARGETS flatbuffers EXPORT FlatbuffersTargets
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-      )
-    else()
-      install(
-        TARGETS flatbuffers EXPORT FlatbuffersTargets
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-      )
-    endif()
-
-    install(EXPORT FlatbuffersTargets
-      FILE FlatbuffersTargets.cmake
-      NAMESPACE flatbuffers::
-      DESTINATION ${FB_CMAKE_DIR}
-    )
-  endif()
-
-  if(FLATBUFFERS_BUILD_FLATC)
-    install(
-      TARGETS flatc EXPORT FlatcTargets
-      RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-      CONFIGURATIONS Release
-    )
-
-    install(
-      EXPORT FlatcTargets
-      FILE FlatcTargets.cmake
-      NAMESPACE flatbuffers::
-      DESTINATION ${FB_CMAKE_DIR}
-      CONFIGURATIONS Release
-    )
-  endif()
-
-  if(FLATBUFFERS_BUILD_SHAREDLIB)
-    if(CMAKE_VERSION VERSION_LESS 3.0)
-      install(
-        TARGETS flatbuffers_shared EXPORT FlatbuffersSharedTargets
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-      )
-    else()
-      install(
-        TARGETS flatbuffers_shared EXPORT FlatbuffersSharedTargets
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-      )
-    endif()
-
-  install(
-      EXPORT FlatbuffersSharedTargets
-      FILE FlatbuffersSharedTargets.cmake
-      NAMESPACE flatbuffers::
-      DESTINATION ${FB_CMAKE_DIR}
-    )
-  endif()
+  target_link_libraries(grpctest grpc++_unsecure grpc pthread dl)
 endif()
 
 if(FLATBUFFERS_BUILD_TESTS)
@@ -341,6 +262,74 @@ endif()
 
 include(CMake/BuildFlatBuffers.cmake)
 
-if(FLATBUFFERS_PACKAGE_DEBIAN)
-    include(CMake/PackageDebian.cmake)
+if(NOT FLATBUFFERS_INSTALL)
+  return()
 endif()
+
+install(DIRECTORY include/flatbuffers DESTINATION include)
+if(FLATBUFFERS_BUILD_FLATLIB)
+  install(TARGETS flatbuffers DESTINATION lib)
+endif()
+if(FLATBUFFERS_BUILD_FLATC)
+  install(TARGETS flatc DESTINATION bin)
+endif()
+## install
+
+set(TARGET_NAME flatbuffers)
+
+include(CMake/BuildFlatBuffers.cmake)
+set(config_install_dir "lib/cmake/${TARGET_NAME}")
+set(include_install_dir "include")
+
+set(generated_dir "${CMAKE_CURRENT_BINARY_DIR}/generated")
+
+# Configuration
+set(version_config "${generated_dir}/${TARGET_NAME}ConfigVersion.cmake")
+set(project_config "${generated_dir}/${TARGET_NAME}Config.cmake")
+set(targets_export_name "${TARGET_NAME}Targets")
+set(namespace "${TARGET_NAME}::")
+
+include(CMakePackageConfigHelpers)
+
+write_basic_package_version_file(
+  "${version_config}" COMPATIBILITY SameMajorVersion
+  )
+
+configure_package_config_file(
+  "CMake/Config.cmake.in"
+  "${project_config}"
+  INSTALL_DESTINATION "${config_install_dir}"
+  )
+  
+set(EXPORT_TARGETS ${TARGET_NAME})
+
+if(FLATBUFFERS_BUILD_SHAREDLIB)
+  set(APPEND EXPORT_TARGETS flatbuffers_shared)
+endif()
+
+install(
+  TARGETS ${EXPORT_TARGETS}
+  EXPORT "${targets_export_name}"
+  LIBRARY DESTINATION "lib"
+  ARCHIVE DESTINATION "lib"
+  RUNTIME DESTINATION "bin"
+  INCLUDES DESTINATION "${include_install_dir}"
+  )
+
+foreach(HEADER ${TARGET_PUBLIC_HDRS})
+  install(
+    FILES "${CMAKE_CURRENT_SOURCE_DIR}/${HEADER}"
+    DESTINATION "${include_install_dir}/${TARGET_NAME}"
+    )
+endforeach()
+
+install(
+  FILES "${project_config}" "${version_config}"
+  DESTINATION "${config_install_dir}"
+  )
+
+install(
+  EXPORT "${targets_export_name}"
+  NAMESPACE "${namespace}"
+  DESTINATION "${config_install_dir}"
+  )
